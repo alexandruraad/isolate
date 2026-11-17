@@ -1,0 +1,28 @@
+[package]
+name        = "isolate-tui"
+description = "Live ratatui TUI dashboard for isolate"
+version.workspace    = true
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[[bin]]
+name = "isolate-tui"
+path = "src/main.rs"
+
+[dependencies]
+isolate-core   = { workspace = true }
+isolate-events = { workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+tokio          = { workspace = true }
+ratatui        = { workspace = true }
+crossterm      = { workspace = true }
+thiserror      = { workspace = true }
+tracing        = { workspace = true }
+chrono         = { workspace = true }
+anyhow         = { workspace = true }
+reqwest        = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util   = { workspace = true }

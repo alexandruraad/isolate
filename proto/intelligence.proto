@@ -1,0 +1,183 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// intelligence.proto — IntelligenceService gRPC API
+//
+// Exposes the intelligence engine's scoring, IOC, baseline, and feed
+// management APIs as a first-class gRPC service.
+
+syntax = "proto3";
+package isolate.intel.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_package = "io.isolate.intel.v1";
+option go_package = "github.com/isolate-project/isolate/gen/go/intel/v1;intelv1";
+
+service IntelligenceService {
+
+    // ── Anomaly Scoring ──────────────────────────────────────────────────────
+
+    /// Get the current anomaly score for an isobox.
+    rpc GetAnomalyScore(AnomalyScoreRequest)    returns (AnomalyScoreResponse);
+
+    /// Stream live anomaly score updates for an isobox.
+    rpc StreamAnomalyScores(AnomalyScoreRequest) returns (stream AnomalyScoreUpdate);
+
+    // ── Behavioral Baseline ──────────────────────────────────────────────────
+
+    /// Get the current behavioral baseline snapshot for a workload class.
+    rpc GetBaseline(BaselineRequest)             returns (BaselineSnapshot);
+
+    /// Reset (clear) the baseline for a workload class.
+    rpc ResetBaseline(BaselineRequest)           returns (google.protobuf.Empty);
+
+    // ── IOC Matching ─────────────────────────────────────────────────────────
+
+    /// Look up an indicator of compromise.
+    rpc LookupIOC(IOCLookupRequest)              returns (IOCLookupResponse);
+
+    /// List all loaded IOCs (paginated).
+    rpc ListIOCs(ListIOCsRequest)                returns (ListIOCsResponse);
+
+    // ── Threat Feeds ─────────────────────────────────────────────────────────
+
+    /// Force-refresh a specific feed or all feeds.
+    rpc RefreshFeeds(RefreshFeedsRequest)        returns (RefreshFeedsResponse);
+
+    /// Get feed statistics.
+    rpc GetFeedStats(google.protobuf.Empty)      returns (FeedStatsResponse);
+
+    // ── Policy Hardening ─────────────────────────────────────────────────────
+
+    /// Get auto-hardening suggestions for an isobox.
+    rpc GetHardeningSuggestions(HardenRequest)   returns (HardenResponse);
+
+    /// Apply suggested hardening to an isobox.
+    rpc ApplyHardening(ApplyHardeningRequest)    returns (google.protobuf.Empty);
+}
+
+// ── Messages ──────────────────────────────────────────────────────────────────
+
+message AnomalyScoreRequest {
+    string isobox_id     = 1;
+}
+
+message AnomalyScoreResponse {
+    string  isobox_id    = 1;
+    float   score        = 2;  // 0.0 (normal) – 1.0 (highly anomalous)
+    float   threshold    = 3;
+    bool    alert_active = 4;
+    repeated float feature_vector = 5;
+    google.protobuf.Timestamp computed_at = 6;
+}
+
+message AnomalyScoreUpdate {
+    string isobox_id = 1;
+    float  score     = 2;
+    google.protobuf.Timestamp timestamp = 3;
+}
+
+message BaselineRequest {
+    string workload_class = 1;
+}
+
+message BaselineSnapshot {
+    string workload_class  = 1;
+    bool   is_warm         = 2;
+    uint64 total_events    = 3;
+    repeated SyscallFreq   syscall_freqs   = 4;
+    repeated NetworkDstFreq network_freqs  = 5;
+    google.protobuf.Timestamp first_seen   = 6;
+    google.protobuf.Timestamp last_updated = 7;
+}
+
+message SyscallFreq {
+    uint32 syscall_nr   = 1;
+    string syscall_name = 2;
+    double rate_per_sec = 3;
+    double stddev       = 4;
+}
+
+message NetworkDstFreq {
+    string dst_addr  = 1;
+    uint32 dst_port  = 2;
+    uint32 count     = 3;
+}
+
+message IOCLookupRequest {
+    string indicator = 1;   // hash, domain, IP, URL, etc.
+    string type_hint = 2;   // "md5" | "sha256" | "domain" | "ip" | "url" | ""
+}
+
+message IOCEntry {
+    string indicator      = 1;
+    string indicator_type = 2;
+    string threat_type    = 3;
+    float  confidence     = 4;
+    string feed_name      = 5;
+    string reference      = 6;
+    google.protobuf.Timestamp last_seen = 7;
+}
+
+message IOCLookupResponse {
+    bool          found   = 1;
+    IOCEntry      entry   = 2;
+}
+
+message ListIOCsRequest {
+    string type_filter = 1;   // "" = all
+    uint32 limit       = 2;
+    string page_token  = 3;
+}
+
+message ListIOCsResponse {
+    repeated IOCEntry iocs         = 1;
+    string            next_page_token = 2;
+    uint64            total        = 3;
+}
+
+message RefreshFeedsRequest {
+    repeated string feed_names = 1;  // [] = all feeds
+    bool force = 2;  // bypass ETag/Last-Modified cache
+}
+
+message RefreshFeedsResponse {
+    uint32 feeds_refreshed = 1;
+    uint64 new_ioc_count   = 2;
+    uint64 total_ioc_count = 3;
+}
+
+message FeedStats {
+    string  name        = 1;
+    bool    enabled     = 2;
+    uint64  ioc_count   = 3;
+    float   refresh_interval_hours = 4;
+    google.protobuf.Timestamp last_refresh = 5;
+    string  status      = 6;  // "ok" | "stale" | "error"
+    string  last_error  = 7;
+}
+
+message FeedStatsResponse {
+    repeated FeedStats feeds     = 1;
+    uint64             total_iocs = 2;
+}
+
+message HardenSuggestion {
+    string  category    = 1;  // "syscall" | "network" | "filesystem" | "process"
+    string  description = 2;
+    string  patch_toml  = 3;
+    float   confidence  = 4;
+    uint32  events_justifying = 5;
+}
+
+message HardenRequest  { string isobox_id = 1; }
+message HardenResponse {
+    string              isobox_id   = 1;
+    repeated HardenSuggestion suggestions = 2;
+}
+
+message ApplyHardeningRequest {
+    string isobox_id = 1;
+    repeated string suggestion_categories = 2;  // [] = apply all
+}

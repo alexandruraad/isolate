@@ -1,0 +1,21 @@
+[package]
+name        = "isolate-store"
+description = "SQLite event store with time-series indexing for isolate"
+version.workspace    = true
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[dependencies]
+isolate-core   = { workspace = true }
+isolate-events = { workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+sqlx           = { workspace = true }
+tokio          = { workspace = true }
+chrono         = { workspace = true }
+thiserror      = { workspace = true }
+tracing        = { workspace = true }
+rmp-serde      = { workspace = true }
+uuid           = { workspace = true }

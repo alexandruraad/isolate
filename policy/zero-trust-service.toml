@@ -1,0 +1,145 @@
+# isolate policy template: zero-trust-service
+#
+# Purpose: Run a microservice under strict zero-trust constraints.
+#          Minimum-privilege: only the syscalls, files, and network connections
+#          the service actually needs are allowed. Everything else is blocked.
+#          Auto-hardening enabled — policy tightens automatically over time.
+#
+# Usage:
+#   isobox run --policy zero-trust-service -- ./my-service --port 8080
+
+[isobox]
+name            = "zero-trust-service"
+workload_class  = "microservice"
+description     = "Zero-trust minimum-privilege microservice wrapper"
+
+[isobox.target]
+type        = "process"
+user        = "nobody"
+group       = "nobody"
+working_dir = "/app"
+
+[isobox.backends]
+enabled = ["ebpf", "seccomp", "landlock", "namespace", "container"]
+
+[isobox.policy]
+version        = "1.0"
+default_action = "block"   # default-deny everything
+auto_harden    = true      # auto-tighten after baseline warmup
+
+[isobox.policy.network]
+default = "block"
+allow   = [
+    # Adjust these to your service's actual dependencies:
+    { dst = "10.0.0.0/8",  port = 5432, proto = "tcp", comment = "PostgreSQL" },
+    { dst = "10.0.0.0/8",  port = 6379, proto = "tcp", comment = "Redis" },
+    { dst = "169.254.169.254/32", port = 80, proto = "tcp", comment = "AWS metadata" },
+    { dst = "0.0.0.0/0",  port = 443, proto = "tcp", comment = "External HTTPS" },
+    { dst = "0.0.0.0/0",  port = 53,  proto = "udp", comment = "DNS" },
+]
+# Inbound: only allow from known service mesh CIDRs
+inbound_allow = [
+    { src = "10.0.0.0/8", port = 8080, proto = "tcp", comment = "Service mesh ingress" },
+]
+
+[isobox.policy.filesystem]
+default   = "deny"
+read_only = [
+    "/app",                  # service binary and configs (read-only)
+    "/usr", "/lib", "/lib64",
+    "/bin", "/sbin",
+    "/etc/ssl/certs",        # TLS certificates
+    "/etc/resolv.conf",
+    "/etc/hosts",
+]
+read_write = [
+    "/tmp",
+    "/var/log/app",          # service log directory
+    "/var/run/app",          # PID files, Unix sockets
+]
+deny = [
+    "/etc/shadow",
+    "/root",
+    "/home",
+    "/proc/sys",
+    "/sys/kernel",
+    "/var/lib/isolate",
+]
+
+[isobox.policy.syscalls]
+mode  = "allowlist"          # strict allowlist for production services
+allow = [
+    # Fundamentals
+    "read", "write", "close", "fstat", "lstat", "stat",
+    "mmap", "mprotect", "munmap", "brk",
+    "rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
+    # File I/O
+    "open", "openat", "creat", "access", "pread64", "pwrite64",
+    "readv", "writev", "lseek",
+    # Directory
+    "getdents64", "mkdir", "rmdir", "unlink", "unlinkat",
+    "rename", "renameat", "renameat2",
+    # Network
+    "socket", "connect", "accept", "accept4",
+    "bind", "listen", "sendto", "recvfrom",
+    "sendmsg", "recvmsg", "getsockopt", "setsockopt",
+    "getpeername", "getsockname",
+    "shutdown",
+    # Polling / async I/O
+    "select", "poll", "epoll_create", "epoll_create1", "epoll_ctl", "epoll_wait",
+    "epoll_pwait",
+    "io_uring_setup", "io_uring_enter", "io_uring_register",
+    # Time
+    "clock_gettime", "gettimeofday", "nanosleep", "clock_nanosleep",
+    # Process
+    "getpid", "getppid", "gettid",
+    "getuid", "getgid", "geteuid", "getegid",
+    "exit", "exit_group",
+    # Memory
+    "madvise", "mremap", "mincore",
+    # Futex (needed by most runtimes)
+    "futex", "set_robust_list", "get_robust_list",
+    # Misc
+    "uname", "prctl", "arch_prctl",
+    "fcntl", "ioctl",
+    "pipe", "pipe2",
+    "dup", "dup2", "dup3",
+    "eventfd", "eventfd2",
+    "timerfd_create", "timerfd_settime", "timerfd_gettime",
+    # Signal
+    "kill", "tgkill", "sigaltstack",
+    # Thread
+    "clone", "clone3", "set_tid_address",
+    # Seccomp (for runtimes that install their own filters)
+    "seccomp",
+]
+
+[isobox.policy.process]
+allow_fork  = true    # allow thread creation via clone
+allow_exec  = false   # no child processes — service should be single-binary
+allow_network_namespace = false
+
+[isobox.intelligence]
+anomaly_threshold       = 0.75
+alert_on_ioc_match      = true
+threat_feeds            = ["abusech-urlhaus", "abusech-threatfox"]
+baseline_warmup_minutes = 30   # longer warmup for services
+
+[isobox.intelligence.on_anomaly]
+action = "freeze"              # freeze immediately on high anomaly; operator reviews
+notify = [
+    "log",
+    "webhook:http://alertmanager.internal/api/v1/alerts",
+]
+
+[isobox.export]
+formats    = ["json", "stix"]
+output_dir = "/var/lib/isolate/forensics"
+
+[isobox.paladin]
+enabled                = true
+escalation_threshold   = 0.85
+max_auto_level         = 4    # auto-terminate on confirmed compromise
+require_approval_above = 5
+heartbeat_timeout_secs = 10   # tight timeout for production
+notify_oob             = ["syslog", "webhook:http://oncall.internal/paladin"]

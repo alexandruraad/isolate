@@ -1,0 +1,19 @@
+[package]
+name        = "isolate-config"
+description = "isobox.toml schema, serde deserialization, and validation"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+
+[dependencies]
+isolate-core    = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+toml            = { workspace = true }
+figment         = { workspace = true }
+thiserror       = { workspace = true }
+ipnet           = { workspace = true }
+chrono          = { workspace = true }
+tracing         = { workspace = true }

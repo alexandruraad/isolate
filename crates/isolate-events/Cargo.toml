@@ -1,0 +1,21 @@
+[package]
+name        = "isolate-events"
+description = "Unified event schema, EventBus, and fan-out routing for isolate"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+
+[dependencies]
+isolate-core    = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+tokio           = { workspace = true }
+tokio-stream    = { workspace = true }
+futures-core    = { workspace = true }
+crossbeam-channel = { workspace = true }
+chrono          = { workspace = true }
+thiserror       = { workspace = true }
+tracing         = { workspace = true }
+async-trait     = "0.1"

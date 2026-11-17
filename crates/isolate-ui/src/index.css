@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #0a0a0a;
+  color: #c8ffe0;
+}
+
+/* Tauri drag region */
+[data-tauri-drag-region] { -webkit-app-region: drag; }
+button, a, input, textarea, select { -webkit-app-region: no-drag; }
+
+/* ── Scanline overlay (Cyberpunk theme only) ── */
+[data-theme="cyber"] #root::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.045) 2px,
+    rgba(0, 0, 0, 0.045) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── SOC theme: body background ── */
+[data-theme="soc"] body,
+[data-theme="soc"] #root {
+  background-color: #0b0f1a;
+  color: #e8edf5;
+}
+
+/* ── Scrollbars ── */
+[data-theme="cyber"] ::-webkit-scrollbar       { width: 5px; height: 5px; }
+[data-theme="cyber"] ::-webkit-scrollbar-track  { background: #0a0a0a; }
+[data-theme="cyber"] ::-webkit-scrollbar-thumb  { background: rgba(0,255,159,0.2); border-radius: 2px; }
+[data-theme="cyber"] ::-webkit-scrollbar-thumb:hover { background: rgba(0,255,159,0.4); }
+
+[data-theme="soc"] ::-webkit-scrollbar       { width: 5px; height: 5px; }
+[data-theme="soc"] ::-webkit-scrollbar-track  { background: #0b0f1a; }
+[data-theme="soc"] ::-webkit-scrollbar-thumb  { background: #1a2840; border-radius: 2px; }
+[data-theme="soc"] ::-webkit-scrollbar-thumb:hover { background: #253a5c; }
+
+/* ── Spin animation for refresh icons ── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

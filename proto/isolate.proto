@@ -1,0 +1,261 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// isolate.proto — Core IsolateService gRPC API
+//
+// Served by isolatd on :7777 (TLS in production).
+
+syntax = "proto3";
+package isolate.v1;
+
+import "events.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_package = "io.isolate.v1";
+option go_package = "github.com/isolate-project/isolate/gen/go/isolate/v1;isolatev1";
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+service IsolateService {
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    /// Create and start a new isobox.
+    rpc CreateIsobox(CreateIsoboxRequest)      returns (CreateIsoboxResponse);
+
+    /// List all active isoboxes.
+    rpc ListIsoboxes(ListIsoboxesRequest)      returns (ListIsoboxesResponse);
+
+    /// Get a single isobox by ID.
+    rpc GetIsobox(GetIsoboxRequest)            returns (Isobox);
+
+    /// Stop and destroy an isobox (graceful).
+    rpc StopIsobox(StopIsoboxRequest)          returns (google.protobuf.Empty);
+
+    /// Kill an isobox immediately (SIGKILL / cgroup.kill).
+    rpc KillIsobox(KillIsoboxRequest)          returns (google.protobuf.Empty);
+
+    /// Freeze (pause) all processes in an isobox.
+    rpc FreezeIsobox(FreezeRequest)            returns (google.protobuf.Empty);
+
+    /// Thaw (resume) a frozen isobox.
+    rpc ThawIsobox(ThawRequest)                returns (google.protobuf.Empty);
+
+    /// Create a forensic snapshot (memory dump + disk image + network state).
+    rpc SnapshotIsobox(SnapshotRequest)        returns (SnapshotResponse);
+
+    // ── Policy ───────────────────────────────────────────────────────────────
+
+    /// Get the current policy for an isobox.
+    rpc GetPolicy(GetPolicyRequest)            returns (Policy);
+
+    /// Apply a new policy update to a running isobox.
+    rpc ApplyPolicy(ApplyPolicyRequest)        returns (google.protobuf.Empty);
+
+    /// Stream policy auto-hardening suggestions (from the intel engine).
+    rpc StreamHardeningSuggestions(GetIsoboxRequest)
+                                               returns (stream PolicySuggestion);
+
+    /// Get policy version history.
+    rpc GetPolicyHistory(GetIsoboxRequest)     returns (PolicyHistory);
+
+    // ── Events & Alerts ──────────────────────────────────────────────────────
+
+    /// Stream live events from an isobox (or all isoboxes if id is empty).
+    rpc StreamEvents(StreamEventsRequest)      returns (stream isolate.events.v1.IsolateEvent);
+
+    /// Stream live alerts.
+    rpc StreamAlerts(StreamAlertsRequest)      returns (stream Alert);
+
+    /// Query historical events from the store.
+    rpc QueryEvents(EventQueryRequest)         returns (EventQueryResponse);
+
+    /// Query historical alerts.
+    rpc QueryAlerts(AlertQueryRequest)         returns (AlertQueryResponse);
+
+    // ── Threat Intelligence ──────────────────────────────────────────────────
+
+    /// Trigger a manual feed refresh.
+    rpc UpdateFeeds(UpdateFeedsRequest)        returns (UpdateFeedsResponse);
+
+    /// List configured threat feeds and their status.
+    rpc ListFeeds(google.protobuf.Empty)       returns (FeedListResponse);
+
+    // ── Forensics Export ─────────────────────────────────────────────────────
+
+    /// Export forensic bundle as a streaming download.
+    rpc ExportForensics(ExportRequest)         returns (stream ExportChunk);
+
+    // ── Daemon Health ────────────────────────────────────────────────────────
+
+    /// Health check.
+    rpc GetHealth(google.protobuf.Empty)       returns (HealthResponse);
+}
+
+// ── Message types ─────────────────────────────────────────────────────────────
+
+message Isobox {
+    string   id             = 1;
+    string   name           = 2;
+    string   state          = 3;  // "running" | "frozen" | "stopped" | "error"
+    repeated string backends = 4;
+    string   workload_class = 5;
+    google.protobuf.Timestamp created_at = 6;
+    float    anomaly_score  = 7;
+    uint32   paladin_level  = 8;
+    uint64   event_count    = 9;
+    uint64   alert_count    = 10;
+}
+
+message CreateIsoboxRequest {
+    // isobox.toml content (TOML encoded)
+    string config_toml = 1;
+    // OR structured config
+    IsoboxConfig config = 2;
+}
+
+message IsoboxConfig {
+    string   name           = 1;
+    string   workload_class = 2;
+    repeated string command = 3;
+    string   user           = 4;
+    string   working_dir    = 5;
+    repeated string backends = 6;
+    string   default_action = 7;  // "audit" | "block" | "kill"
+}
+
+message CreateIsoboxResponse {
+    string isobox_id = 1;
+}
+
+message ListIsoboxesRequest {
+    string state_filter = 1;  // "" = all
+    uint32 limit        = 2;
+    string page_token   = 3;
+}
+
+message ListIsoboxesResponse {
+    repeated Isobox isoboxes    = 1;
+    string          next_page_token = 2;
+}
+
+message GetIsoboxRequest     { string isobox_id = 1; }
+message StopIsoboxRequest    { string isobox_id = 1; }
+message KillIsoboxRequest    { string isobox_id = 1; string reason = 2; }
+message FreezeRequest        { string isobox_id = 1; }
+message ThawRequest          { string isobox_id = 1; }
+
+message SnapshotRequest {
+    string isobox_id   = 1;
+    string output_path = 2;
+    bool   include_mem = 3;
+    bool   include_disk = 4;
+    bool   include_net  = 5;
+}
+message SnapshotResponse { string archive_path = 1; uint64 size_bytes = 2; }
+
+message Policy {
+    string  isobox_id     = 1;
+    uint32  version       = 2;
+    string  toml          = 3;  // current policy as TOML
+    string  author        = 4;
+    string  reason        = 5;
+    google.protobuf.Timestamp applied_at = 6;
+}
+
+message PolicyHistory {
+    string             isobox_id = 1;
+    repeated Policy    versions  = 2;
+}
+
+message PolicySuggestion {
+    string  isobox_id  = 1;
+    string  category   = 2;  // "syscall" | "network" | "filesystem"
+    string  description = 3;
+    string  patch_toml  = 4; // TOML diff to apply
+    float   confidence  = 5;
+}
+
+message GetPolicyRequest  { string isobox_id = 1; }
+message ApplyPolicyRequest {
+    string isobox_id  = 1;
+    string patch_toml = 2;
+    string reason     = 3;
+}
+
+message Alert {
+    string  id           = 1;
+    string  isobox_id    = 2;
+    uint32  severity     = 3;
+    string  title        = 4;
+    string  detail       = 5;
+    float   anomaly_score = 6;
+    string  action_taken = 7;
+    uint32  paladin_level = 8;
+    google.protobuf.Timestamp created_at = 9;
+}
+
+message StreamEventsRequest {
+    string isobox_id  = 1;  // "" = all isoboxes
+    repeated string event_types = 2;  // [] = all types
+}
+
+message StreamAlertsRequest {
+    string isobox_id  = 1;
+    uint32 min_severity = 2;  // 0=info, 1=warn, 2=critical, 3=emergency
+}
+
+message EventQueryRequest {
+    string isobox_id   = 1;
+    uint64 start_ns    = 2;
+    uint64 end_ns      = 3;
+    string event_type  = 4;
+    uint32 limit       = 5;
+    string page_token  = 6;
+}
+message EventQueryResponse {
+    repeated isolate.events.v1.IsolateEvent events = 1;
+    string next_page_token = 2;
+    uint64 total = 3;
+}
+
+message AlertQueryRequest {
+    string isobox_id   = 1;
+    uint32 min_severity = 2;
+    uint32 limit       = 3;
+    string page_token  = 4;
+}
+message AlertQueryResponse {
+    repeated Alert alerts = 1;
+    string next_page_token = 2;
+    uint64 total = 3;
+}
+
+message UpdateFeedsRequest { repeated string feed_names = 1; }
+message UpdateFeedsResponse {
+    uint32 feeds_updated = 1;
+    uint64 ioc_count     = 2;
+}
+
+message FeedEntry {
+    string name        = 1;
+    string url         = 2;
+    bool   enabled     = 3;
+    uint64 ioc_count   = 4;
+    google.protobuf.Timestamp last_updated = 5;
+    string status      = 6;
+}
+message FeedListResponse { repeated FeedEntry feeds = 1; }
+
+message ExportRequest {
+    string isobox_id = 1;
+    string format    = 2;  // "json" | "stix" | "pcap" | "zip"
+}
+message ExportChunk { bytes data = 1; }
+
+message HealthResponse {
+    string  status         = 1;  // "ok" | "degraded"
+    uint32  active_isoboxes = 2;
+    bool    paladin_alive  = 3;
+    string  version        = 4;
+}

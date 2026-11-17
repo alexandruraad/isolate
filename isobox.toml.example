@@ -1,0 +1,262 @@
+# isobox.toml — Annotated complete example
+#
+# This file documents every supported configuration key for an isolate isobox.
+# Copy it, uncomment the sections you need, and pass it to:
+#
+#   isobox run --config ./isobox.toml
+#
+# Or reference a built-in template:
+#   isobox run --policy malware-analysis -- ./suspicious
+#
+# Built-in templates: malware-analysis, dev-environment,
+#                     zero-trust-service, compromised-containment
+
+# ── Core identity ──────────────────────────────────────────────────────────────
+
+[isobox]
+# Human-readable name for this isobox (appears in TUI, logs, and REST API)
+name = "my-sandbox"
+
+# Workload class: used by the intelligence engine to group baselines.
+# Common values: "malware-analysis", "microservice", "dev-environment",
+#                "build-tool", "browser", "database", "compromised"
+# Custom values are allowed — they create a new baseline bucket.
+workload_class = "custom"
+
+# Free-text description (stored in SQLite, shown in 'isobox inspect')
+description = "Describe what this isobox does"
+
+
+# ── Target workload ────────────────────────────────────────────────────────────
+
+[isobox.target]
+# type = "process"       Run a native OS process (default)
+# type = "container"     Wrap an OCI container image
+# type = "vm"            Run inside a lightweight VM (KVM/Firecracker/Apple Virt)
+# type = "wasm-module"   Run a WASI WebAssembly module
+type = "process"
+
+# Command and arguments to execute (required for type=process and type=wasm-module)
+command = ["/usr/bin/python3", "-u", "script.py"]
+
+# Run as this user (must exist on the host).  Leave empty to inherit caller.
+user  = "nobody"
+group = "nobody"
+
+# Working directory inside the isobox (defaults to / if not set)
+working_dir = "/tmp/sandbox"
+
+# Environment variables to set (others are stripped unless inherit_env = true)
+# env = { PATH = "/usr/bin:/bin", HOME = "/tmp" }
+# inherit_env = false
+
+# For type = "container":
+# image = "ubuntu:24.04"
+# For type = "vm":
+# kernel = "/path/to/vmlinux"
+# rootfs = "/path/to/rootfs.ext4"
+# vcpus  = 1
+# memory_mb = 256
+# For type = "wasm-module":
+# module_path = "/path/to/module.wasm"
+# wasi_preopens = ["/tmp:/tmp"]
+
+
+# ── Backend selection ──────────────────────────────────────────────────────────
+
+[isobox.backends]
+# List of isolation backends to layer (order doesn't matter — priority is fixed).
+# isolate automatically selects only backends available on the current platform.
+#
+# Linux backends:
+#   ebpf        — eBPF tracepoints + LSM hooks (monitoring + enforcement)
+#   seccomp     — Syscall allowlist/denylist filter (kernel ABI boundary)
+#   landlock    — Unprivileged filesystem access control
+#   namespace   — Linux namespaces (PID, mount, UTS, IPC, net, user, cgroup)
+#   container   — OCI runtime (runc/crun) — requires type=container
+#   kvm         — KVM/QEMU or Firecracker VMM — requires type=vm
+#
+# macOS backends:
+#   esf         — Endpoint Security Framework (authorization callbacks)
+#   seatbelt    — sandbox(7) / Seatbelt SBPL profile
+#   virt-framework — Virtualization.framework (Apple Silicon)
+#
+# Windows backends:
+#   etw         — Event Tracing for Windows
+#   hyperv      — Hyper-V partition
+#   winsandbox  — Windows Sandbox API
+#
+# Cross-platform:
+#   wasm        — Wasmtime WASI sandbox (requires type=wasm-module)
+#
+enabled = ["ebpf", "seccomp", "landlock", "namespace"]
+
+
+# ── Policy ─────────────────────────────────────────────────────────────────────
+
+[isobox.policy]
+version = "1.0"
+
+# Default action when an event doesn't match any explicit rule:
+#   "audit"  — record but allow (observation mode)
+#   "block"  — silently deny
+#   "kill"   — terminate the isobox immediately
+default_action = "audit"
+
+# Automatically apply hardening suggestions from the intelligence engine
+# after the baseline warmup period expires.
+auto_harden = false
+
+
+# ── Network policy ─────────────────────────────────────────────────────────────
+
+[isobox.policy.network]
+# Default action for connections not matching any allow rule:
+# "audit" | "block"
+default = "block"
+
+# Force all DNS through DNS-over-HTTPS (no raw UDP/53 queries)
+dns_over_https = false
+
+# Allowlist entries.  Each entry can specify:
+#   dst   — destination CIDR (e.g. "8.8.8.8/32", "10.0.0.0/8", "0.0.0.0/0")
+#   port  — destination port (0 = any)
+#   proto — "tcp" | "udp" | "icmp" | "any"
+#   comment — (optional) human-readable note
+allow = [
+    # { dst = "8.8.8.8/32", port = 53,  proto = "udp",  comment = "Google DNS" },
+    # { dst = "0.0.0.0/0",  port = 443, proto = "tcp",  comment = "HTTPS" },
+]
+
+# Inbound allowlist (for services that accept connections)
+# inbound_allow = [
+#     { src = "10.0.0.0/8", port = 8080, proto = "tcp" },
+# ]
+
+
+# ── Filesystem policy ──────────────────────────────────────────────────────────
+
+[isobox.policy.filesystem]
+# Default filesystem action: "audit" | "deny"
+default = "deny"
+
+# Paths the isobox may read (but not write)
+read_only = [
+    "/usr",
+    "/lib", "/lib64",
+    "/bin", "/sbin",
+]
+
+# Paths the isobox may read and write
+read_write = [
+    "/tmp/sandbox",
+]
+
+# Paths that are explicitly denied (overrides allow rules)
+deny = [
+    "/etc/shadow",
+    "/root",
+    "/home",
+]
+
+
+# ── Syscall policy ─────────────────────────────────────────────────────────────
+
+[isobox.policy.syscalls]
+# mode = "allowlist"  — only syscalls in 'allow' are permitted; all others blocked
+# mode = "denylist"   — all syscalls permitted except those in 'deny'
+mode = "denylist"
+
+# Syscall names (use Linux man page names, e.g. "openat", "socket", "ptrace")
+# allow = ["read", "write", "open", "close", "exit_group", ...]
+# deny  = ["ptrace", "init_module", "reboot", ...]
+deny = [
+    "ptrace",
+    "init_module", "finit_module", "delete_module",
+    "reboot",
+]
+
+
+# ── Process policy ─────────────────────────────────────────────────────────────
+
+[isobox.policy.process]
+allow_fork              = true   # allow child processes (fork/clone)
+allow_exec              = true   # allow execve / execveat
+allow_network_namespace = false  # no network namespace creation
+
+
+# ── Intelligence engine ────────────────────────────────────────────────────────
+
+[isobox.intelligence]
+# Anomaly score [0.0–1.0] above which an alert fires
+anomaly_threshold = 0.75
+
+# Fire alerts when an IOC (hash, domain, IP, URL) is matched
+alert_on_ioc_match = true
+
+# Which threat feeds to consult for IOC matching.
+# Built-in feeds: "abusech-urlhaus", "abusech-malwarebazaar", "abusech-threatfox"
+# Custom feeds are configured in the daemon's daemon.toml.
+threat_feeds = ["abusech-urlhaus", "abusech-malwarebazaar", "abusech-threatfox"]
+
+# How many minutes of activity to collect before the baseline is "warm".
+# Events during warmup are still recorded; anomaly scoring begins after warmup.
+baseline_warmup_minutes = 10
+
+[isobox.intelligence.on_anomaly]
+# Action to take when anomaly_threshold is exceeded:
+#   "alert"   — emit an alert event only
+#   "freeze"  — freeze the isobox (SIGSTOP / cgroup.freeze)
+#   "kill"    — terminate the isobox (SIGKILL / cgroup.kill)
+action = "alert"
+
+# Notification channels (comma-separated list):
+#   "log"            — write to isolatd's structured log
+#   "syslog"         — write to syslog (kernel ring buffer)
+#   "stderr"         — write to isolatd's stderr
+#   "webhook:<url>"  — HTTP POST JSON to <url>
+notify = ["log"]
+
+
+# ── Forensic export ────────────────────────────────────────────────────────────
+
+[isobox.export]
+# Available formats: "json", "pcap", "stix", "zip" (all of the above)
+formats = ["json"]
+
+# Directory where exported bundles are written
+output_dir = "/tmp/isolate-exports"
+
+
+# ── Paladin (last-resort guardian) ────────────────────────────────────────────
+
+[isobox.paladin]
+# Enable the paladin watchdog for this isobox.
+# When enabled, the paladin monitors this isobox independently of isolatd.
+# If isolatd dies or the anomaly score spikes above escalation_threshold,
+# the paladin takes autonomous action up to max_auto_level.
+enabled = false
+
+# Anomaly score at which paladin begins its escalation sequence [0.0–1.0]
+escalation_threshold = 0.90
+
+# Highest escalation level paladin may reach WITHOUT human approval:
+#   0 = WATCHING   (no action, monitor only)
+#   1 = ALERT      (out-of-band notification only)
+#   2 = CONTAIN    (nftables network cut)
+#   3 = FREEZE     (cgroup.freeze / SIGSTOP)
+#   4 = TERMINATE  (cgroup.kill / SIGKILL)
+#   5 = SCORCH     (wipe volatile state + drop caches)
+#   6 = RAMPART    (system-wide nftables lockdown)
+#   7 = ABSOLUTION (kernel panic + kdump — requires PALADIN_ABSOLUTION_ENABLED=true)
+max_auto_level = 3
+
+# Levels above this require explicit human approval before execution
+require_approval_above = 4
+
+# How many seconds isolatd can miss its heartbeat before paladin intervenes
+heartbeat_timeout_secs = 15
+
+# Out-of-band notification channels for paladin alerts
+# (independent of the intelligence engine's notify channels)
+notify_oob = ["syslog", "log"]

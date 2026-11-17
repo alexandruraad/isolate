@@ -1,0 +1,88 @@
+# isolate policy template: dev-environment
+#
+# Purpose: Wrap a development workload (build tool, language runtime, test
+#          runner) so that it can't silently exfiltrate secrets or phone home.
+#          Permissive enough to not break developer workflows.
+#          Audit mode: nothing is blocked, everything is recorded.
+#
+# Usage:
+#   isobox run --policy dev-environment -- cargo build
+
+[isobox]
+name            = "dev-environment"
+workload_class  = "dev-environment"
+description     = "Transparent audit wrapper for development workloads"
+
+[isobox.target]
+type        = "process"
+user        = ""    # run as invoking user
+group       = ""
+working_dir = ""    # inherit CWD
+
+[isobox.backends]
+enabled = ["ebpf", "seccomp"]
+# Lightweight: eBPF for observation, seccomp for minimum-privilege enforcement
+
+[isobox.policy]
+version        = "1.0"
+default_action = "audit"
+auto_harden    = true      # after warmup, suggest tighter policy based on observed behaviour
+
+[isobox.policy.network]
+default = "audit"          # allow all, but record every connection
+allow   = [
+    # Allow common development destinations (comment out to restrict)
+    { dst = "0.0.0.0/0", port = 443, proto = "tcp", comment = "HTTPS outbound" },
+    { dst = "0.0.0.0/0", port = 80,  proto = "tcp", comment = "HTTP outbound (uncommon)" },
+    { dst = "0.0.0.0/0", port = 53,  proto = "udp", comment = "DNS" },
+    { dst = "0.0.0.0/0", port = 22,  proto = "tcp", comment = "Git SSH" },
+]
+
+[isobox.policy.filesystem]
+default   = "audit"        # full access, fully audited
+read_only = []
+read_write = []
+deny = [
+    # Protect the most sensitive files even in audit mode
+    "/etc/shadow",
+    "/etc/gshadow",
+    "/root/.ssh/id_*",     # private SSH keys
+    "/var/lib/isolate",    # isolate's own state
+]
+
+[isobox.policy.syscalls]
+mode  = "denylist"
+deny  = [
+    # Prevent container escapes from any nested container the build might start
+    "unshare",
+    # Prevent kernel module loading
+    "init_module", "finit_module",
+    # Prevent reboot
+    "reboot",
+]
+
+[isobox.policy.process]
+allow_fork  = true
+allow_exec  = true
+allow_network_namespace = false
+
+[isobox.intelligence]
+anomaly_threshold       = 0.80
+alert_on_ioc_match      = true
+threat_feeds            = ["abusech-urlhaus"]
+baseline_warmup_minutes = 10
+
+[isobox.intelligence.on_anomaly]
+action = "alert"
+notify = ["log"]
+
+[isobox.export]
+formats    = ["json"]
+output_dir = "/tmp/isolate-dev-exports"
+
+[isobox.paladin]
+enabled                = false  # paladin disabled for dev; operator can enable
+escalation_threshold   = 0.95
+max_auto_level         = 2      # CONTAIN only if enabled
+heartbeat_timeout_secs = 30
+notify_oob             = ["log"]

@@ -1,0 +1,20 @@
+[package]
+name        = "isolate-core"
+description = "Shared types, traits, error hierarchy, and IDs for isolate"
+version.workspace     = true
+edition.workspace     = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+anyhow      = { workspace = true }
+uuid        = { workspace = true }
+ulid        = { workspace = true }
+chrono      = { workspace = true }
+tokio       = { workspace = true }
+tracing     = { workspace = true }
+async-trait = "0.1"

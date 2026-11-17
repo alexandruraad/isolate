@@ -1,0 +1,112 @@
+# isolate policy template: compromised-containment
+#
+# Purpose: Emergency wrapping of a KNOWN or SUSPECTED compromised process.
+#          Immediate maximum containment + forensic capture.
+#          Network is cut. Filesystem is read-only. Every syscall is logged.
+#          Paladin is on hair-trigger. Auto-freeze on any anomaly above 0.5.
+#
+# Usage (emergency — attach to running PID):
+#   isobox contain --policy compromised-containment --pid <PID>
+#
+# Or wrap before execution:
+#   isobox run --policy compromised-containment -- ./suspected-binary
+
+[isobox]
+name            = "compromised-containment"
+workload_class  = "compromised"
+description     = "Emergency containment of a known or suspected compromised process"
+
+[isobox.target]
+type        = "process"
+user        = "nobody"
+group       = "nobody"
+working_dir = "/tmp/isobox-containment"
+
+[isobox.backends]
+enabled = ["ebpf", "seccomp", "landlock", "namespace", "container"]
+
+[isobox.policy]
+version        = "1.0"
+default_action = "block"   # block-by-default — containment mode
+auto_harden    = false     # don't auto-harden; we're already at maximum containment
+
+[isobox.policy.network]
+default        = "block"   # ALL network blocked
+dns_over_https = false     # no DNS at all
+allow          = []        # no exceptions — the process is compromised
+
+[isobox.policy.filesystem]
+default    = "deny"
+read_only  = [
+    "/usr/lib",
+    "/lib", "/lib64",
+    "/bin", "/sbin",
+    "/dev/null", "/dev/zero", "/dev/urandom",
+]
+read_write = [
+    # Minimal writable space for operation — all writes are audited
+    "/tmp/isobox-containment",
+]
+deny = [
+    "/etc",        # no config access
+    "/home",
+    "/root",
+    "/var",
+    "/proc/sys",
+    "/sys",
+    "/run",
+]
+
+[isobox.policy.syscalls]
+mode = "denylist"
+deny = [
+    # Network (belt-and-suspenders with network policy)
+    "socket", "connect", "bind", "sendto", "sendmsg",
+    # Persistence / privilege escalation
+    "setuid", "setgid", "setreuid", "setregid", "setresuid", "setresgid",
+    "capset", "prctl",
+    "init_module", "finit_module", "delete_module",
+    # Container / namespace escapes
+    "unshare", "setns", "pivot_root",
+    # Introspection
+    "ptrace", "process_vm_readv", "process_vm_writev",
+    "perf_event_open", "bpf",
+    # Reboot / shutdown
+    "reboot",
+    # Key management
+    "add_key", "request_key", "keyctl",
+    # Clock manipulation
+    "clock_settime", "settimeofday", "adjtimex",
+]
+
+[isobox.policy.process]
+allow_fork  = false   # no child processes during containment
+allow_exec  = false
+allow_network_namespace = false
+
+[isobox.intelligence]
+anomaly_threshold       = 0.50   # hair-trigger — freeze at 50% anomaly
+alert_on_ioc_match      = true
+threat_feeds            = ["abusech-urlhaus", "abusech-malwarebazaar", "abusech-threatfox"]
+baseline_warmup_minutes = 0      # no warmup — everything is anomalous
+
+[isobox.intelligence.on_anomaly]
+action = "freeze"   # freeze immediately; do NOT kill (preserve for forensics)
+notify = [
+    "log",
+    "syslog",
+    "webhook:http://localhost:9090/emergency-alert",
+]
+
+[isobox.export]
+# Auto-export on freeze (configured in daemon)
+formats    = ["json", "pcap", "stix"]
+output_dir = "/forensics/incidents"
+
+[isobox.paladin]
+enabled                = true
+escalation_threshold   = 0.70  # paladin activates above 70%
+max_auto_level         = 4     # auto-terminate if necessary
+require_approval_above = 5     # SCORCH and above need human sign-off
+heartbeat_timeout_secs = 5     # very tight heartbeat — this is an emergency
+notify_oob             = ["syslog", "stderr", "log"]

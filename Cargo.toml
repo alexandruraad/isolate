@@ -1,0 +1,154 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "crates/isolate-core",
+    "crates/isolate-proto",
+    "crates/isolate-config",
+    "crates/isolate-events",
+    "crates/isolate-policy",
+    "crates/isolate-store",
+    "crates/isolate-sandbox",
+    "crates/isolate-intel",
+    "crates/isolate-paladin",
+    "crates/isolate-daemon",
+    "crates/isolate-cli",
+    "crates/isolate-tui",
+]
+
+[workspace.package]
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["isolate contributors"]
+license     = "Apache-2.0"
+repository  = "https://github.com/your-org/isolate"
+rust-version = "1.79"
+
+# ── Shared dependency versions ───────────────────────────────────────────────
+[workspace.dependencies]
+
+# Async runtime
+tokio       = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1" }
+
+# gRPC / protobuf
+tonic       = { version = "0.12", features = ["tls"] }
+tonic-build = { version = "0.12" }
+prost       = { version = "0.13" }
+prost-types = { version = "0.13" }
+
+# REST API
+axum        = { version = "0.7", features = ["ws", "multipart"] }
+tower       = { version = "0.4" }
+tower-http  = { version = "0.5", features = ["cors", "trace"] }
+hyper       = { version = "1" }
+
+# WebSocket
+tokio-tungstenite = { version = "0.23" }
+
+# CLI
+clap        = { version = "4", features = ["derive", "env", "color"] }
+
+# TUI
+ratatui     = { version = "0.28" }
+crossterm   = { version = "0.28", features = ["event-stream"] }
+
+# Serialization
+serde       = { version = "1", features = ["derive"] }
+serde_json  = { version = "1" }
+toml        = { version = "0.8" }
+rmp-serde   = { version = "1" }
+
+# Configuration layering
+figment     = { version = "0.10", features = ["toml", "env"] }
+
+# Storage
+sqlx        = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "migrate", "chrono", "uuid"] }
+
+# Error handling
+thiserror   = { version = "2" }
+anyhow      = { version = "1" }
+
+# Logging / tracing
+tracing             = { version = "0.1" }
+tracing-subscriber  = { version = "0.3", features = ["env-filter", "json"] }
+
+# Crypto / TLS
+ring        = { version = "0.17" }
+rustls      = { version = "0.23" }
+tokio-rustls = { version = "0.26" }
+jsonwebtoken = { version = "9" }
+
+# HTTP client (for threat feeds)
+reqwest     = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
+
+# Async utilities
+futures-core = { version = "0.3" }
+futures-util = { version = "0.3" }
+
+# Concurrency primitives
+crossbeam-channel = { version = "0.5" }
+dashmap     = { version = "6" }
+arc-swap    = { version = "1" }
+parking_lot = { version = "0.12" }
+
+# Numeric / ML
+ndarray     = { version = "0.16" }
+ort         = { version = "2.0.0-rc.11", features = ["load-dynamic"] }  # ONNX Runtime
+
+# IOC matching
+aho-corasick = { version = "1" }
+ipnet       = { version = "2", features = ["serde"] }
+
+# Bloom filter (for baseline dedup)
+bloomfilter = { version = "1" }
+
+# UUID / IDs
+uuid        = { version = "1", features = ["v4", "serde"] }
+ulid        = { version = "1" }
+
+# Time
+chrono      = { version = "0.4", features = ["serde"] }
+
+# Unix / POSIX
+nix         = { version = "0.29", features = ["process", "signal", "fs", "user", "ptrace", "net"] }
+libc        = { version = "0.2" }
+
+# eBPF (Linux only)
+aya         = { version = "0.13" }
+aya-log     = { version = "0.2" }
+
+# seccomp (Linux only)
+seccompiler = { version = "0.4" }
+
+# landlock (Linux only)
+landlock    = { version = "0.4" }
+
+# WASM sandbox
+wasmtime    = { version = "42", features = ["async"] }
+
+# Workspace crates
+isolate-core    = { path = "crates/isolate-core" }
+isolate-proto   = { path = "crates/isolate-proto" }
+isolate-config  = { path = "crates/isolate-config" }
+isolate-events  = { path = "crates/isolate-events" }
+isolate-policy  = { path = "crates/isolate-policy" }
+isolate-store   = { path = "crates/isolate-store" }
+isolate-sandbox = { path = "crates/isolate-sandbox" }
+isolate-intel   = { path = "crates/isolate-intel" }
+isolate-paladin = { path = "crates/isolate-paladin" }
+
+# ── Profile config ────────────────────────────────────────────────────────────
+[profile.release]
+opt-level   = 3
+lto         = "thin"
+codegen-units = 1
+strip       = "debuginfo"
+
+[profile.dev]
+opt-level   = 1     # faster compile for eBPF-adjacent code
+
+[profile.release-with-debug]
+inherits    = "release"
+strip       = "none"
+debug       = true
